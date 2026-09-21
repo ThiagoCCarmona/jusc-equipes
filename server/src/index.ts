@@ -87,12 +87,148 @@ app.post('/api/auth/change-password', authMiddleware, (req: AuthRequest, res) =>
 });
 
 // -----------------------------------------------------------------------------
+// EVENTS ROUTES
+// -----------------------------------------------------------------------------
+
+app.get('/api/events', (req, res) => {
+  const events = db.prepare('SELECT * FROM events ORDER BY created_at ASC').all() as Array<{
+    id: string;
+    name: string;
+    description: string;
+    date: string;
+    location: string;
+    status: string;
+    created_at: string;
+  }>;
+
+  return res.json(events.map(e => ({
+    id: e.id,
+    name: e.name,
+    description: e.description,
+    date: e.date,
+    location: e.location,
+    status: e.status,
+    createdAt: e.created_at,
+  })));
+});
+
+app.post('/api/events', authMiddleware, (req, res) => {
+  const { name, description, date, location, cloneFromEventId } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'O nome do evento é obrigatório.' });
+  }
+
+  const id = `event-${Date.now()}`;
+  const now = new Date().toISOString();
+
+  const createEventTx = db.transaction(() => {
+    db.prepare(`
+      INSERT INTO events (id, name, description, date, location, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name.trim(), description?.trim() || '', date?.trim() || '', location?.trim() || '', 'active', now);
+
+    // If cloning structure from an existing event
+    if (cloneFromEventId) {
+      const sourceTeams = db.prepare('SELECT * FROM teams WHERE event_id = ? ORDER BY order_index ASC').all(cloneFromEventId) as any[];
+      
+      const insertTeam = db.prepare(`
+        INSERT INTO teams (id, event_id, name, description, color_accent, order_index, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const insertRole = db.prepare(`
+        INSERT INTO roles (id, team_id, title, description, max_spots, order_index, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      sourceTeams.forEach((team, tIdx) => {
+        const newTeamId = `t-${Date.now()}-${tIdx}`;
+        insertTeam.run(newTeamId, id, team.name, team.description, team.color_accent, team.order_index, now);
+
+        const sourceRoles = db.prepare('SELECT * FROM roles WHERE team_id = ? ORDER BY order_index ASC').all(team.id) as any[];
+        sourceRoles.forEach((role, rIdx) => {
+          const newRoleId = `r-${Date.now()}-${tIdx}-${rIdx}`;
+          insertRole.run(newRoleId, newTeamId, role.title, role.description, role.max_spots, role.order_index, now);
+        });
+      });
+    }
+  });
+
+  createEventTx();
+
+  return res.status(201).json({
+    id,
+    name: name.trim(),
+    description: description?.trim() || '',
+    date: date?.trim() || '',
+    location: location?.trim() || '',
+    status: 'active',
+    createdAt: now,
+  });
+});
+
+app.put('/api/events/:id', authMiddleware, (req, res) => {
+  const { id } = req.params;
+  const { name, description, date, location, status } = req.body;
+
+  db.prepare(`
+    UPDATE events SET
+      name = COALESCE(?, name),
+      description = COALESCE(?, description),
+      date = COALESCE(?, date),
+      location = COALESCE(?, location),
+      status = COALESCE(?, status)
+    WHERE id = ?
+  `).run(name?.trim(), description?.trim(), date?.trim(), location?.trim(), status, id);
+
+  return res.json({ success: true });
+});
+
+app.delete('/api/events/:id', authMiddleware, (req, res) => {
+  const { id } = req.params;
+  
+  const eventsCount = (db.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number }).count;
+  if (eventsCount <= 1) {
+    return res.status(400).json({ error: 'Você não pode excluir o único evento existente.' });
+  }
+
+  const deleteTx = db.transaction(() => {
+    const eventTeams = db.prepare('SELECT id FROM teams WHERE event_id = ?').all(id) as Array<{ id: string }>;
+    for (const team of eventTeams) {
+      const roles = db.prepare('SELECT id FROM roles WHERE team_id = ?').all(team.id) as Array<{ id: string }>;
+      for (const role of roles) {
+        db.prepare('DELETE FROM role_assignments WHERE role_id = ?').run(role.id);
+      }
+      db.prepare('DELETE FROM roles WHERE team_id = ?').run(team.id);
+    }
+    db.prepare('DELETE FROM teams WHERE event_id = ?').run(id);
+    db.prepare('DELETE FROM events WHERE id = ?').run(id);
+  });
+
+  deleteTx();
+  return res.json({ success: true, message: 'Evento excluído com sucesso!' });
+});
+
+// -----------------------------------------------------------------------------
 // TEAMS & ROLES ROUTES
 // -----------------------------------------------------------------------------
 
 app.get('/api/teams', (req, res) => {
-  const teamsRows = db.prepare('SELECT * FROM teams ORDER BY order_index ASC, created_at ASC').all() as Array<{
+  const { eventId } = req.query;
+
+  let query = 'SELECT * FROM teams';
+  const params: any[] = [];
+
+  if (eventId) {
+    query += ' WHERE event_id = ?';
+    params.push(eventId);
+  }
+
+  query += ' ORDER BY order_index ASC, created_at ASC';
+
+  const teamsRows = db.prepare(query).all(...params) as Array<{
     id: string;
+    event_id: string;
     name: string;
     description: string;
     color_accent: string;
@@ -135,6 +271,7 @@ app.get('/api/teams', (req, res) => {
 
   const teams = teamsRows.map(t => ({
     id: t.id,
+    eventId: t.event_id,
     name: t.name,
     description: t.description,
     colorAccent: t.color_accent,
@@ -145,21 +282,22 @@ app.get('/api/teams', (req, res) => {
 });
 
 app.post('/api/teams', authMiddleware, (req, res) => {
-  const { name, description, colorAccent } = req.body;
+  const { name, description, colorAccent, eventId } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'O nome da equipe é obrigatório.' });
   }
 
+  const targetEventId = eventId || 'event-1';
   const id = `t-${Date.now()}`;
-  const maxOrder = (db.prepare('SELECT MAX(order_index) as max_order FROM teams').get() as any)?.max_order ?? -1;
+  const maxOrder = (db.prepare('SELECT MAX(order_index) as max_order FROM teams WHERE event_id = ?').get(targetEventId) as any)?.max_order ?? -1;
   const orderIndex = maxOrder + 1;
 
   db.prepare(`
-    INSERT INTO teams (id, name, description, color_accent, order_index, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, name.trim(), description?.trim() || '', colorAccent || '#FFC700', orderIndex, new Date().toISOString());
+    INSERT INTO teams (id, event_id, name, description, color_accent, order_index, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(id, targetEventId, name.trim(), description?.trim() || '', colorAccent || '#FFC700', orderIndex, new Date().toISOString());
 
-  return res.status(201).json({ id, name, description, colorAccent, roles: [] });
+  return res.status(201).json({ id, eventId: targetEventId, name, description, colorAccent, roles: [] });
 });
 
 app.put('/api/teams/:id', authMiddleware, (req, res) => {
@@ -362,14 +500,16 @@ app.post('/api/allocations/move', authMiddleware, (req, res) => {
 // -----------------------------------------------------------------------------
 
 app.get('/api/backup', authMiddleware, (req, res) => {
+  const events = db.prepare('SELECT * FROM events').all();
   const teams = db.prepare('SELECT * FROM teams').all();
   const roles = db.prepare('SELECT * FROM roles').all();
   const people = db.prepare('SELECT * FROM people').all();
   const assignments = db.prepare('SELECT * FROM role_assignments').all();
 
   return res.json({
-    version: '3.0-sql',
+    version: '4.0-events',
     exportedAt: new Date().toISOString(),
+    events,
     teams,
     roles,
     people,

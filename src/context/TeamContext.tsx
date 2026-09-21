@@ -6,7 +6,8 @@ import type {
   PersonType, 
   PriorityLevel, 
   AllocationFilterType, 
-  TeamFilterStatus 
+  TeamFilterStatus,
+  Event
 } from '../types';
 import { INITIAL_PEOPLE, INITIAL_TEAMS } from '../utils/sampleData';
 import { 
@@ -19,6 +20,14 @@ import { api, getAuthToken, getSavedUser } from '../services/api';
 import { LoginModal } from '../components/LoginModal';
 
 interface TeamContextType {
+  // Events
+  events: Event[];
+  currentEvent: Event | null;
+  selectEvent: (eventId: string) => void;
+  addEvent: (name: string, description?: string, date?: string, location?: string, cloneFromEventId?: string) => Promise<void>;
+  updateEvent: (eventId: string, updates: Partial<Event>) => Promise<void>;
+  deleteEvent: (eventId: string) => Promise<void>;
+
   teams: Team[];
   people: Person[];
   currentUser: any;
@@ -86,12 +95,47 @@ interface TeamContextType {
 
 const TeamContext = createContext<TeamContextType | undefined>(undefined);
 
+const DEFAULT_EVENT: Event = {
+  id: 'event-1',
+  name: 'Encontro Geral JUSC 2026',
+  description: 'Equipes de trabalho e funções oficiais do encontro',
+  date: 'Outubro / 2026',
+  location: 'Sede JUSC',
+  status: 'active',
+  createdAt: '2026-09-01T00:00:00.000Z',
+};
+
+const LOCAL_STORAGE_EVENTS = 'jusc_events_v4';
+const LOCAL_STORAGE_CURRENT_EVENT = 'jusc_current_event_v4';
 const LOCAL_STORAGE_TEAMS = 'jusc_teams_v3';
 const LOCAL_STORAGE_PEOPLE = 'jusc_people_v3';
 
 export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<any>(() => getSavedUser());
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(!getAuthToken());
+
+  // Events State
+  const [events, setEvents] = useState<Event[]>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_EVENTS);
+      return saved ? JSON.parse(saved) : [DEFAULT_EVENT];
+    } catch {
+      return [DEFAULT_EVENT];
+    }
+  });
+
+  const [currentEvent, setCurrentEvent] = useState<Event | null>(() => {
+    try {
+      const savedId = localStorage.getItem(LOCAL_STORAGE_CURRENT_EVENT);
+      if (savedId) {
+        const found = events.find(e => e.id === savedId);
+        if (found) return found;
+      }
+      return events[0] || DEFAULT_EVENT;
+    } catch {
+      return events[0] || DEFAULT_EVENT;
+    }
+  });
 
   const [teams, setTeams] = useState<Team[]>(() => {
     try {
@@ -118,24 +162,95 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
 
-  // Load from API on mount
+  // Save events and current event to local storage
   useEffect(() => {
-    async function loadFromBackend() {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_EVENTS, JSON.stringify(events));
+    } catch (e) {
+      console.error('Failed to save events to localStorage', e);
+    }
+  }, [events]);
+
+  useEffect(() => {
+    if (currentEvent) {
       try {
-        const [apiTeams, apiPeople] = await Promise.all([
-          api.getTeams(),
+        localStorage.setItem(LOCAL_STORAGE_CURRENT_EVENT, currentEvent.id);
+      } catch (e) {
+        console.error('Failed to save currentEvent to localStorage', e);
+      }
+    }
+  }, [currentEvent]);
+
+  // Load events and people from API on mount
+  useEffect(() => {
+    async function loadInitialData() {
+      try {
+        const [apiEvents, apiPeople] = await Promise.all([
+          api.getEvents(),
           api.getPeople(),
         ]);
-        if (apiTeams && apiTeams.length > 0) setTeams(apiTeams);
+        if (apiEvents && apiEvents.length > 0) {
+          setEvents(apiEvents);
+          setCurrentEvent(prev => {
+            if (prev) {
+              const matched = apiEvents.find(e => e.id === prev.id);
+              if (matched) return matched;
+            }
+            return apiEvents[0];
+          });
+        }
         if (apiPeople && apiPeople.length > 0) setPeople(apiPeople);
       } catch (err) {
-        // Offline or dev fallback to localStorage
         console.warn('Backend offline or not reachable, using local storage cache.');
       }
     }
 
-    loadFromBackend();
+    loadInitialData();
   }, [currentUser]);
+
+  // Load teams whenever currentEvent changes
+  useEffect(() => {
+    if (!currentEvent) return;
+    const activeEventId = currentEvent.id;
+
+    async function loadTeams() {
+      try {
+        const apiTeams = await api.getTeams(activeEventId);
+        if (apiTeams) setTeams(apiTeams);
+      } catch (err) {
+        console.warn('Backend offline, using localStorage for event teams.');
+        try {
+          const savedEventTeams = localStorage.getItem(`jusc_teams_event_${activeEventId}`);
+          if (savedEventTeams) {
+            setTeams(JSON.parse(savedEventTeams));
+          } else if (activeEventId === 'event-1') {
+            const savedLegacy = localStorage.getItem(LOCAL_STORAGE_TEAMS);
+            setTeams(savedLegacy ? JSON.parse(savedLegacy) : INITIAL_TEAMS);
+          } else {
+            setTeams([]);
+          }
+        } catch {
+          setTeams([]);
+        }
+      }
+    }
+
+    loadTeams();
+  }, [currentEvent?.id]);
+
+  // Persist teams for current event
+  useEffect(() => {
+    if (currentEvent) {
+      try {
+        localStorage.setItem(`jusc_teams_event_${currentEvent.id}`, JSON.stringify(teams));
+        if (currentEvent.id === 'event-1') {
+          localStorage.setItem(LOCAL_STORAGE_TEAMS, JSON.stringify(teams));
+        }
+      } catch (e) {
+        console.error('Failed to save teams to localStorage', e);
+      }
+    }
+  }, [teams, currentEvent?.id]);
 
   // Filter States
   const [peopleSearch, setPeopleSearch] = useState('');
@@ -145,15 +260,6 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [teamSearch, setTeamSearch] = useState('');
   const [teamStatusFilter, setTeamStatusFilter] = useState<TeamFilterStatus>('all');
-
-  // Persistence
-  useEffect(() => {
-    try {
-      localStorage.setItem(LOCAL_STORAGE_TEAMS, JSON.stringify(teams));
-    } catch (e) {
-      console.error('Failed to save teams to localStorage', e);
-    }
-  }, [teams]);
 
   useEffect(() => {
     try {
@@ -169,11 +275,109 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoginModalOpen(true);
   };
 
+  // Event Actions
+  const selectEvent = (eventId: string) => {
+    const target = events.find(e => e.id === eventId);
+    if (target) {
+      setCurrentEvent(target);
+    }
+  };
+
+  const addEvent = async (
+    name: string,
+    description?: string,
+    date?: string,
+    location?: string,
+    cloneFromEventId?: string
+  ) => {
+    const tempId = `event-${Date.now()}`;
+    const now = new Date().toISOString();
+    let newEvt: Event = {
+      id: tempId,
+      name,
+      description,
+      date,
+      location,
+      status: 'active',
+      createdAt: now,
+    };
+
+    try {
+      const apiEvt = await api.createEvent(name, description, date, location, cloneFromEventId);
+      if (apiEvt) {
+        newEvt = apiEvt;
+      }
+    } catch (err) {
+      console.warn('API createEvent error', err);
+    }
+
+    setEvents(prev => [...prev, newEvt]);
+    setCurrentEvent(newEvt);
+
+    if (cloneFromEventId) {
+      try {
+        const clonedTeams = await api.getTeams(newEvt.id);
+        setTeams(clonedTeams || []);
+      } catch {
+        // offline clone of current teams with clean vacancies
+        setTeams(prev => prev.map((t, idx) => ({
+          ...t,
+          id: `t-${Date.now()}-${idx}`,
+          eventId: newEvt.id,
+          roles: t.roles.map((r, rIdx) => ({
+            ...r,
+            id: `r-${Date.now()}-${idx}-${rIdx}`,
+            assignedPersonIds: [],
+          }))
+        })));
+      }
+    } else {
+      setTeams([]);
+    }
+  };
+
+  const updateEvent = async (eventId: string, updates: Partial<Event>) => {
+    setEvents(prev => prev.map(e => e.id === eventId ? { ...e, ...updates } : e));
+    if (currentEvent?.id === eventId) {
+      setCurrentEvent(prev => prev ? { ...prev, ...updates } : null);
+    }
+    try {
+      await api.updateEvent(eventId, updates);
+    } catch (err) {
+      console.warn('API updateEvent error', err);
+    }
+  };
+
+  const deleteEvent = async (eventId: string) => {
+    if (events.length <= 1) {
+      alert('Você não pode excluir o único evento existente.');
+      return;
+    }
+    if (!window.confirm('Tem certeza que deseja excluir este evento e todas as suas equipes? O banco de pessoas NÃO será afetado.')) {
+      return;
+    }
+
+    const remaining = events.filter(e => e.id !== eventId);
+    setEvents(remaining);
+    if (currentEvent?.id === eventId) {
+      const next = remaining[0];
+      setCurrentEvent(next);
+    }
+
+    try {
+      await api.deleteEvent(eventId);
+    } catch (err) {
+      console.warn('API deleteEvent error', err);
+    }
+  };
+
   // Team Actions
   const addTeam = async (name: string, description: string, colorAccent = '#FFC700') => {
     const tempId = `t-${Date.now()}`;
+    const targetEventId = currentEvent?.id || 'event-1';
     const newTeam: Team = {
       id: tempId,
+      eventId: targetEventId,
       name: name.trim(),
       description: description.trim(),
       colorAccent,
@@ -182,7 +386,7 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTeams(prev => [newTeam, ...prev]);
 
     try {
-      await api.createTeam(name, description, colorAccent);
+      await api.createTeam(name, description, colorAccent, targetEventId);
     } catch (err) {
       console.warn('API createTeam sync error', err);
     }
@@ -557,14 +761,20 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const exportPDF = () => exportTeamsToPDF(teams, people);
-  const exportExcel = () => exportTeamsToExcel(teams, people);
-  const exportPeoplePDF = () => exportPeopleToPDF(people, teams);
-  const exportPeopleExcel = () => exportPeopleToExcel(people, teams);
+  const exportPDF = () => exportTeamsToPDF(teams, people, currentEvent);
+  const exportExcel = () => exportTeamsToExcel(teams, people, currentEvent);
+  const exportPeoplePDF = () => exportPeopleToPDF(people, teams, currentEvent);
+  const exportPeopleExcel = () => exportPeopleToExcel(people, teams, currentEvent);
 
   return (
     <TeamContext.Provider
       value={{
+        events,
+        currentEvent,
+        selectEvent,
+        addEvent,
+        updateEvent,
+        deleteEvent,
         teams,
         people,
         currentUser,

@@ -18,6 +18,16 @@ export interface Person {
   createdAt: string;
 }
 
+export interface Event {
+  id: string;
+  name: string;
+  description?: string;
+  date?: string;
+  location?: string;
+  status?: 'active' | 'archived' | 'planning';
+  createdAt: string;
+}
+
 export interface Role {
   id: string;
   title: string;
@@ -28,6 +38,7 @@ export interface Role {
 
 export interface Team {
   id: string;
+  eventId?: string;
   name: string;
   description: string;
   colorAccent?: string;

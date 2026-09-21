@@ -1,4 +1,4 @@
-import type { Team, Person, PersonType, PriorityLevel } from '../types';
+import type { Team, Person, PersonType, PriorityLevel, Event } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -80,15 +80,47 @@ export const api = {
     removeAuthToken();
   },
 
-  // Teams
-  async getTeams(): Promise<Team[]> {
-    return request<Team[]>('/teams');
+  // Events
+  async getEvents(): Promise<Event[]> {
+    return request<Event[]>('/events');
   },
 
-  async createTeam(name: string, description: string, colorAccent: string): Promise<Team> {
+  async createEvent(
+    name: string,
+    description?: string,
+    date?: string,
+    location?: string,
+    cloneFromEventId?: string
+  ): Promise<Event> {
+    return request<Event>('/events', {
+      method: 'POST',
+      body: JSON.stringify({ name, description, date, location, cloneFromEventId }),
+    });
+  },
+
+  async updateEvent(id: string, data: Partial<Event>): Promise<void> {
+    return request<void>(`/events/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteEvent(id: string): Promise<void> {
+    return request<void>(`/events/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Teams
+  async getTeams(eventId?: string): Promise<Team[]> {
+    const query = eventId ? `?eventId=${encodeURIComponent(eventId)}` : '';
+    return request<Team[]>(`/teams${query}`);
+  },
+
+  async createTeam(name: string, description: string, colorAccent = '#FFC700', eventId?: string): Promise<Team> {
     return request<Team>('/teams', {
       method: 'POST',
-      body: JSON.stringify({ name, description, colorAccent }),
+      body: JSON.stringify({ name, description, colorAccent, eventId }),
     });
   },
 

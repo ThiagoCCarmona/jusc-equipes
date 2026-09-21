@@ -1,9 +1,9 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import type { Person, Team } from '../types';
+import type { Person, Team, Event } from '../types';
 
-export function exportTeamsToPDF(teams: Team[], people: Person[]): void {
+export function exportTeamsToPDF(teams: Team[], people: Person[], event?: Event | null): void {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -27,14 +27,21 @@ export function exportTeamsToPDF(teams: Team[], people: Person[]): void {
   doc.rect(0, 28, 210, 2, 'F');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(15);
   doc.setTextColor(255, 199, 0);
-  doc.text('JUSC - JOVENS UNIDOS SEGUINDO CRISTO', 14, 13);
+  doc.text('JUSC - JOVENS UNIDOS SEGUINDO CRISTO', 14, 12);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  const eventLabel = event?.name ? `${event.name}` : 'Relatório Oficial de Equipes e Funções';
+  doc.text(eventLabel, 14, 19);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(220, 220, 225);
-  doc.text('Relatório Oficial de Equipes e Funções de Trabalho', 14, 21);
+  doc.setFontSize(8);
+  doc.setTextColor(200, 200, 200);
+  const subInfo = [event?.date, event?.location].filter(Boolean).join(' • ') || 'Escala de Trabalho e Funções';
+  doc.text(subInfo, 14, 25);
 
   doc.setFontSize(8);
   doc.setTextColor(180, 180, 180);
@@ -154,7 +161,7 @@ export function exportTeamsToPDF(teams: Team[], people: Person[]): void {
   doc.save(`JUSC_Escala_Equipes_${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
-export function exportTeamsToExcel(teams: Team[], people: Person[]): void {
+export function exportTeamsToExcel(teams: Team[], people: Person[], event?: Event | null): void {
   const peopleMap = new Map<string, Person>(people.map(p => [p.id, p]));
 
   const rowsEquipes: Array<Record<string, unknown>> = [];
@@ -162,6 +169,7 @@ export function exportTeamsToExcel(teams: Team[], people: Person[]): void {
     t.roles.forEach(r => {
       if (r.assignedPersonIds.length === 0) {
         rowsEquipes.push({
+          'Evento': event?.name || 'Geral',
           'Equipe': t.name,
           'Descrição da Equipe': t.description,
           'Função': r.title,
@@ -177,6 +185,7 @@ export function exportTeamsToExcel(teams: Team[], people: Person[]): void {
         r.assignedPersonIds.forEach(pid => {
           const p = peopleMap.get(pid);
           rowsEquipes.push({
+            'Evento': event?.name || 'Geral',
             'Equipe': t.name,
             'Descrição da Equipe': t.description,
             'Função': r.title,
@@ -205,6 +214,9 @@ export function exportTeamsToExcel(teams: Team[], people: Person[]): void {
   });
 
   const rowsResumo = [
+    { 'Métrica': 'Evento', 'Valor': event?.name || 'Geral' },
+    { 'Métrica': 'Data / Período', 'Valor': event?.date || '-' },
+    { 'Métrica': 'Local', 'Valor': event?.location || '-' },
     { 'Métrica': 'Total de Equipes', 'Valor': teams.length },
     { 'Métrica': 'Total de Funções', 'Valor': totalRoles },
     { 'Métrica': 'Total de Vagas Cadastradas', 'Valor': totalSpots },
@@ -221,11 +233,12 @@ export function exportTeamsToExcel(teams: Team[], people: Person[]): void {
   XLSX.utils.book_append_sheet(workbook, wsEquipes, 'Equipes e Funções');
   XLSX.utils.book_append_sheet(workbook, wsResumo, 'Resumo Geral');
 
-  XLSX.writeFile(workbook, `JUSC_Equipes_Planilha_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  const filePrefix = event?.name ? `JUSC_${event.name.replace(/[^a-zA-Z0-9]/g, '_')}` : 'JUSC_Equipes';
+  XLSX.writeFile(workbook, `${filePrefix}_Planilha_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 // Dedicated People Report in PDF
-export function exportPeopleToPDF(people: Person[], teams: Team[]): void {
+export function exportPeopleToPDF(people: Person[], teams: Team[], event?: Event | null): void {
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',
@@ -248,14 +261,15 @@ export function exportPeopleToPDF(people: Person[], teams: Team[]): void {
   doc.rect(0, 26, 297, 2, 'F');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(15);
   doc.setTextColor(255, 199, 0);
   doc.text('JUSC - BANCO DE PESSOAS E INTEGRANTES', 14, 12);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setTextColor(220, 220, 225);
-  doc.text('Relação Geral de Voluntários, Jovens, Tios e Coordenação', 14, 20);
+  const eventSub = event ? `Alocações referentes ao evento: ${event.name}` : 'Relação Geral de Voluntários, Jovens, Tios e Coordenação';
+  doc.text(eventSub, 14, 20);
 
   doc.setFontSize(8);
   doc.setTextColor(180, 180, 180);
@@ -337,7 +351,7 @@ export function exportPeopleToPDF(people: Person[], teams: Team[]): void {
 }
 
 // Dedicated People Report in Excel
-export function exportPeopleToExcel(people: Person[], teams: Team[]): void {
+export function exportPeopleToExcel(people: Person[], teams: Team[], event?: Event | null): void {
   const personAllocations = new Map<string, Array<{ teamName: string; roleName: string }>>();
   teams.forEach(t => {
     t.roles.forEach(r => {
@@ -368,6 +382,7 @@ export function exportPeopleToExcel(people: Person[], teams: Team[]): void {
 
   // Priority Summary
   const prioritySummary = [
+    { 'Prioridade': 'Evento de Referência', 'Quantidade': event?.name || 'Geral' },
     { 'Prioridade': 'Prioridade 3 (Alta)', 'Quantidade': people.filter(p => p.priority === 3).length },
     { 'Prioridade': 'Prioridade 2 (Média)', 'Quantidade': people.filter(p => p.priority === 2).length },
     { 'Prioridade': 'Prioridade 1 (Baixa)', 'Quantidade': people.filter(p => p.priority === 1).length },
@@ -381,8 +396,9 @@ export function exportPeopleToExcel(people: Person[], teams: Team[]): void {
   const wsPessoas = XLSX.utils.json_to_sheet(rows);
   const wsResumo = XLSX.utils.json_to_sheet(prioritySummary);
 
-  XLSX.utils.book_append_sheet(workbook, wsPessoas, 'Lista de Pessoas');
-  XLSX.utils.book_append_sheet(workbook, wsResumo, 'Resumo por Prioridade');
+  XLSX.utils.book_append_sheet(workbook, wsPessoas, 'Banco de Pessoas');
+  XLSX.utils.book_append_sheet(workbook, wsResumo, 'Resumo Geral');
 
-  XLSX.writeFile(workbook, `JUSC_Pessoas_Planilha_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  const filePrefix = event?.name ? `JUSC_Pessoas_${event.name.replace(/[^a-zA-Z0-9]/g, '_')}` : 'JUSC_Relatorio_Pessoas';
+  XLSX.writeFile(workbook, `${filePrefix}_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }

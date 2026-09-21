@@ -33,13 +33,25 @@ export function initDb() {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS events (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      date TEXT,
+      location TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS teams (
       id TEXT PRIMARY KEY,
+      event_id TEXT DEFAULT 'event-1',
       name TEXT NOT NULL,
       description TEXT,
       color_accent TEXT DEFAULT '#FFC700',
       order_index INTEGER DEFAULT 0,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS roles (
@@ -88,6 +100,38 @@ export function initDb() {
     console.log(`[Database] Default admin created: ${adminEmail} (password: ${adminPassword})`);
   }
 
+  // Safe migration: check if teams table has event_id column
+  const teamCols = db.prepare("PRAGMA table_info(teams)").all() as Array<{ name: string }>;
+  if (!teamCols.some(c => c.name === 'event_id')) {
+    try {
+      db.exec("ALTER TABLE teams ADD COLUMN event_id TEXT DEFAULT 'event-1'");
+      console.log('[Database] Migrated teams table: added event_id column');
+    } catch (e) {
+      console.warn('[Database] Column event_id already present or error', e);
+    }
+  }
+
+  // Seed default event if empty
+  const eventsCount = (db.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number }).count;
+  if (eventsCount === 0) {
+    db.prepare(`
+      INSERT INTO events (id, name, description, date, location, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'event-1',
+      'Encontro Geral JUSC 2026',
+      'Equipes de trabalho e funções oficiais do encontro',
+      'Outubro / 2026',
+      'Sede JUSC',
+      'active',
+      new Date().toISOString()
+    );
+    console.log('[Database] Default event created: Encontro Geral JUSC 2026');
+  }
+
+  // Link any orphan teams to event-1
+  db.prepare("UPDATE teams SET event_id = 'event-1' WHERE event_id IS NULL OR event_id = ''").run();
+
   // Seed default teams and people if empty
   const teamsCount = (db.prepare('SELECT COUNT(*) as count FROM teams').get() as { count: number }).count;
   if (teamsCount === 0) {
@@ -113,8 +157,8 @@ export function initDb() {
 
     // Seed teams & roles & assignments
     const insertTeam = db.prepare(`
-      INSERT INTO teams (id, name, description, color_accent, order_index, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO teams (id, event_id, name, description, color_accent, order_index, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
     const insertRole = db.prepare(`
@@ -128,7 +172,7 @@ export function initDb() {
     `);
 
     INITIAL_TEAMS.forEach((t, tIndex) => {
-      insertTeam.run(t.id, t.name, t.description, t.colorAccent || '#FFC700', tIndex, new Date().toISOString());
+      insertTeam.run(t.id, 'event-1', t.name, t.description, t.colorAccent || '#FFC700', tIndex, new Date().toISOString());
       
       t.roles.forEach((r, rIndex) => {
         insertRole.run(r.id, t.id, r.title, r.description, r.maxSpots || null, rIndex, new Date().toISOString());

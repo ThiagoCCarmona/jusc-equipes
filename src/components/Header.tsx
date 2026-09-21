@@ -13,11 +13,16 @@ import {
   AlertCircle,
   ShieldCheck,
   LogOut,
-  LogIn
+  LogIn,
+  Calendar,
+  Edit3,
+  PlusCircle,
+  Trash2
 } from 'lucide-react';
 import { useTeams } from '../context/TeamContext';
 import { TeamModal } from './TeamModal';
 import { BackupModal } from './BackupModal';
+import { EventModal } from './EventModal';
 import confetti from 'canvas-confetti';
 
 interface HeaderProps {
@@ -27,6 +32,12 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const { 
+    events,
+    currentEvent,
+    selectEvent,
+    addEvent,
+    updateEvent,
+    deleteEvent,
     teams, 
     people, 
     addTeam, 
@@ -43,6 +54,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  const [eventToEdit, setEventToEdit] = useState<any>(null);
+  const [isEventDropdownOpen, setIsEventDropdownOpen] = useState(false);
 
   // Compute metrics
   const totalPeople = people.length;
@@ -104,29 +118,151 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       <div className="max-w-[2100px] mx-auto px-4 sm:px-6 py-2.5">
         <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
           
-          {/* Brand and Logo */}
-          <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-start">
-            <div className="flex items-center gap-3">
+          {/* Brand, Logo & Event Selector */}
+          <div className="flex items-center gap-2 sm:gap-3 w-full lg:w-auto justify-between lg:justify-start">
+            <div className="flex items-center gap-2.5 sm:gap-3">
               <div className="relative group cursor-pointer" title="JUSC - Jovens Unidos Seguindo Cristo">
                 <img
                   src="/assets/logo-jusc.jpg"
                   alt="Logo JUSC"
-                  className="w-11 h-11 rounded-xl object-cover border-2 border-[#FFC700] shadow-[0_0_15px_rgba(255,199,0,0.3)]"
+                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl object-cover border-2 border-[#FFC700] shadow-[0_0_15px_rgba(255,199,0,0.3)]"
                 />
               </div>
 
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-lg sm:text-xl font-black tracking-tight text-white flex items-center gap-1.5">
+                  <h1 className="text-base sm:text-xl font-black tracking-tight text-white flex items-center gap-1 sm:gap-1.5">
                     <span className="text-[#FFC700]">JUSC</span>
-                    <span className="text-gray-400 font-bold text-sm sm:text-base">|</span>
-                    <span className="text-gray-100 font-extrabold text-sm sm:text-base">Equipes de Trabalho</span>
+                    <span className="text-gray-400 font-bold text-xs sm:text-base">|</span>
+                    <span className="text-gray-100 font-extrabold text-xs sm:text-base">Equipes</span>
                   </h1>
                 </div>
-                <p className="text-[11px] text-gray-400 font-medium">
+                <p className="text-[10px] sm:text-[11px] text-gray-400 font-medium hidden sm:block">
                   Jovens Unidos Seguindo Cristo
                 </p>
               </div>
+            </div>
+
+            {/* Event Selector Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setIsEventDropdownOpen(!isEventDropdownOpen)}
+                className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#141624] hover:bg-[#1a1d2e] border border-[#FFC700]/50 hover:border-[#FFC700] text-left transition-all cursor-pointer shadow-sm group"
+                title="Clique para alternar ou gerenciar eventos"
+              >
+                <div className="p-1.5 rounded-lg bg-[#FFC700]/15 text-[#FFC700] group-hover:scale-105 transition-transform">
+                  <Calendar className="w-3.5 h-3.5" />
+                </div>
+                <div className="max-w-[110px] sm:max-w-[160px] xl:max-w-[200px] truncate">
+                  <div className="text-[9px] font-bold text-[#FFC700] uppercase tracking-wider">
+                    Evento Ativo
+                  </div>
+                  <div className="text-xs sm:text-sm font-extrabold text-white truncate">
+                    {currentEvent?.name || 'Selecione um evento'}
+                  </div>
+                </div>
+                <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isEventDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isEventDropdownOpen && (
+                <div className="absolute left-0 top-full mt-2 w-72 sm:w-80 bg-[#121420] border-2 border-[#FFC700]/50 rounded-2xl shadow-2xl p-2 z-50 animate-fade-in space-y-1">
+                  <div className="px-3 py-1.5 flex items-center justify-between border-b border-gray-800">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                      Eventos ({events.length})
+                    </span>
+                    <button
+                      onClick={() => {
+                        setIsEventDropdownOpen(false);
+                        setEventToEdit(null);
+                        setIsEventModalOpen(true);
+                      }}
+                      className="text-[11px] font-bold text-[#FFC700] hover:text-yellow-300 flex items-center gap-1 cursor-pointer"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      <span>Novo</span>
+                    </button>
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto space-y-1 py-1 scrollbar-thin">
+                    {events.map((evt) => {
+                      const isSelected = currentEvent?.id === evt.id;
+                      return (
+                        <div
+                          key={evt.id}
+                          className={`flex items-center justify-between p-2 rounded-xl transition-colors ${
+                            isSelected ? 'bg-[#FFC700]/15 border border-[#FFC700]/40' : 'hover:bg-gray-800/80'
+                          }`}
+                        >
+                          <button
+                            onClick={() => {
+                              selectEvent(evt.id);
+                              setIsEventDropdownOpen(false);
+                            }}
+                            className="flex-1 text-left cursor-pointer min-w-0 pr-2"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-xs font-bold truncate ${isSelected ? 'text-[#FFC700]' : 'text-white'}`}>
+                                {evt.name}
+                              </span>
+                              {isSelected && (
+                                <span className="px-1.5 py-0.5 text-[8px] font-black bg-[#FFC700] text-black rounded-md shrink-0">
+                                  ATIVO
+                                </span>
+                              )}
+                            </div>
+                            {(evt.date || evt.location) && (
+                              <div className="text-[10px] text-gray-400 truncate mt-0.5">
+                                {[evt.date, evt.location].filter(Boolean).join(' • ')}
+                              </div>
+                            )}
+                          </button>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEventToEdit(evt);
+                                setIsEventDropdownOpen(false);
+                                setIsEventModalOpen(true);
+                              }}
+                              className="p-1 text-gray-400 hover:text-white rounded-md hover:bg-gray-700/60 transition-colors cursor-pointer"
+                              title="Editar evento"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            {events.length > 1 && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteEvent(evt.id);
+                                }}
+                                className="p-1 text-gray-400 hover:text-red-400 rounded-md hover:bg-red-500/10 transition-colors cursor-pointer"
+                                title="Excluir evento"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="pt-1.5 border-t border-gray-800">
+                    <button
+                      onClick={() => {
+                        setIsEventDropdownOpen(false);
+                        setEventToEdit(null);
+                        setIsEventModalOpen(true);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 p-2 rounded-xl bg-[#FFC700]/10 hover:bg-[#FFC700]/20 border border-[#FFC700]/30 text-xs font-extrabold text-[#FFC700] transition-colors cursor-pointer"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      <span>Criar Novo Evento</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Mobile menu button for sidebar */}
@@ -312,6 +448,24 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       <BackupModal
         isOpen={isBackupModalOpen}
         onClose={() => setIsBackupModalOpen(false)}
+      />
+
+      <EventModal
+        isOpen={isEventModalOpen}
+        onClose={() => {
+          setIsEventModalOpen(false);
+          setEventToEdit(null);
+        }}
+        onSave={(name, description, date, location, cloneFromEventId) => {
+          if (eventToEdit) {
+            updateEvent(eventToEdit.id, { name, description, date, location });
+          } else {
+            addEvent(name, description, date, location, cloneFromEventId);
+          }
+        }}
+        eventToEdit={eventToEdit}
+        currentEventId={currentEvent?.id}
+        currentEventName={currentEvent?.name}
       />
     </header>
   );
