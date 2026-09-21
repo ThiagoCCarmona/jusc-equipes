@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
-import { db, initDb } from './db';
+import { db, initDb, seedDefaults } from './db';
 import { authMiddleware, generateToken, AuthRequest } from './auth';
 
 dotenv.config();
@@ -437,7 +437,11 @@ app.put('/api/people/:id', authMiddleware, (req, res) => {
 
 app.delete('/api/people/:id', authMiddleware, (req, res) => {
   const { id } = req.params;
-  db.prepare('DELETE FROM people WHERE id = ?').run(id);
+  const deleteTx = db.transaction(() => {
+    db.prepare('DELETE FROM role_assignments WHERE person_id = ?').run(id);
+    db.prepare('DELETE FROM people WHERE id = ?').run(id);
+  });
+  deleteTx();
   return res.json({ success: true });
 });
 
@@ -597,7 +601,7 @@ app.post('/api/backup/reset', authMiddleware, (req, res) => {
   });
   resetTx();
 
-  initDb();
+  seedDefaults();
   return res.json({ success: true, message: 'Dados restaurados para o padrão JUSC!' });
 });
 

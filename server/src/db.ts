@@ -83,6 +83,10 @@ export function initDb() {
       FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
       FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS system_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
   `);
 
   // Seed default admin user
@@ -132,57 +136,65 @@ export function initDb() {
   // Link any orphan teams to event-1
   db.prepare("UPDATE teams SET event_id = 'event-1' WHERE event_id IS NULL OR event_id = ''").run();
 
-  // Seed default teams and people if empty
-  const teamsCount = (db.prepare('SELECT COUNT(*) as count FROM teams').get() as { count: number }).count;
-  if (teamsCount === 0) {
-    console.log('[Database] Seeding initial JUSC teams and people...');
-    
-    // Seed people
-    const insertPerson = db.prepare(`
-      INSERT INTO people (id, name, type, priority, phone, notes, created_at)
-      VALUES (@id, @name, @type, @priority, @phone, @notes, @createdAt)
-    `);
-
-    for (const p of INITIAL_PEOPLE) {
-      insertPerson.run({
-        id: p.id,
-        name: p.name,
-        type: p.type,
-        priority: p.priority ?? 0,
-        phone: p.phone ?? null,
-        notes: p.notes ?? null,
-        createdAt: p.createdAt || new Date().toISOString(),
-      });
+  // One-time initial seed: will NEVER re-seed deleted people or teams on server restart!
+  const isSeeded = db.prepare("SELECT value FROM system_meta WHERE key = 'initial_seed_done'").get();
+  if (!isSeeded) {
+    const teamsCount = (db.prepare('SELECT COUNT(*) as count FROM teams').get() as { count: number }).count;
+    if (teamsCount === 0) {
+      seedDefaults();
     }
+    db.prepare("INSERT OR REPLACE INTO system_meta (key, value) VALUES ('initial_seed_done', 'true')").run();
+  }
+}
 
-    // Seed teams & roles & assignments
-    const insertTeam = db.prepare(`
-      INSERT INTO teams (id, event_id, name, description, color_accent, order_index, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+export function seedDefaults() {
+  console.log('[Database] Seeding initial JUSC teams and people...');
+  
+  // Seed people
+  const insertPerson = db.prepare(`
+    INSERT INTO people (id, name, type, priority, phone, notes, created_at)
+    VALUES (@id, @name, @type, @priority, @phone, @notes, @createdAt)
+  `);
 
-    const insertRole = db.prepare(`
-      INSERT INTO roles (id, team_id, title, description, max_spots, order_index, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+  for (const p of INITIAL_PEOPLE) {
+    insertPerson.run({
+      id: p.id,
+      name: p.name,
+      type: p.type,
+      priority: p.priority ?? 0,
+      phone: p.phone ?? null,
+      notes: p.notes ?? null,
+      createdAt: p.createdAt || new Date().toISOString(),
+    });
+  }
 
-    const insertAssignment = db.prepare(`
-      INSERT OR IGNORE INTO role_assignments (role_id, person_id, created_at)
-      VALUES (?, ?, ?)
-    `);
+  // Seed teams & roles & assignments
+  const insertTeam = db.prepare(`
+    INSERT INTO teams (id, event_id, name, description, color_accent, order_index, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
 
-    INITIAL_TEAMS.forEach((t, tIndex) => {
-      insertTeam.run(t.id, 'event-1', t.name, t.description, t.colorAccent || '#FFC700', tIndex, new Date().toISOString());
+  const insertRole = db.prepare(`
+    INSERT INTO roles (id, team_id, title, description, max_spots, order_index, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const insertAssignment = db.prepare(`
+    INSERT OR IGNORE INTO role_assignments (role_id, person_id, created_at)
+    VALUES (?, ?, ?)
+  `);
+
+  INITIAL_TEAMS.forEach((t, tIndex) => {
+    insertTeam.run(t.id, 'event-1', t.name, t.description, t.colorAccent || '#FFC700', tIndex, new Date().toISOString());
+    
+    t.roles.forEach((r, rIndex) => {
+      insertRole.run(r.id, t.id, r.title, r.description, r.maxSpots || null, rIndex, new Date().toISOString());
       
-      t.roles.forEach((r, rIndex) => {
-        insertRole.run(r.id, t.id, r.title, r.description, r.maxSpots || null, rIndex, new Date().toISOString());
-        
-        r.assignedPersonIds.forEach(pid => {
-          insertAssignment.run(r.id, pid, new Date().toISOString());
-        });
+      r.assignedPersonIds.forEach(pid => {
+        insertAssignment.run(r.id, pid, new Date().toISOString());
       });
     });
+  });
 
-    console.log('[Database] Seeding complete.');
-  }
+  console.log('[Database] Seeding complete.');
 }

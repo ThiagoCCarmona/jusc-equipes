@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import type { 
   Person, 
   Team, 
@@ -137,12 +137,14 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
 
+  const isDataLoadedRef = useRef(false);
+
   const [teams, setTeams] = useState<Team[]>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_TEAMS);
-      return saved ? JSON.parse(saved) : INITIAL_TEAMS;
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      return INITIAL_TEAMS;
+      return [];
     }
   });
 
@@ -156,9 +158,9 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
           priority: p.priority !== undefined ? p.priority : 0,
         }));
       }
-      return INITIAL_PEOPLE;
+      return [];
     } catch {
-      return INITIAL_PEOPLE;
+      return [];
     }
   });
 
@@ -189,7 +191,7 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
           api.getEvents(),
           api.getPeople(),
         ]);
-        if (apiEvents && apiEvents.length > 0) {
+        if (Array.isArray(apiEvents) && apiEvents.length > 0) {
           setEvents(apiEvents);
           setCurrentEvent(prev => {
             if (prev) {
@@ -199,9 +201,21 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return apiEvents[0];
           });
         }
-        if (apiPeople && apiPeople.length > 0) setPeople(apiPeople);
+        if (Array.isArray(apiPeople)) {
+          setPeople(apiPeople);
+          try {
+            localStorage.setItem(LOCAL_STORAGE_PEOPLE, JSON.stringify(apiPeople));
+          } catch {}
+        }
       } catch (err) {
         console.warn('Backend offline or not reachable, using local storage cache.');
+        const saved = localStorage.getItem(LOCAL_STORAGE_PEOPLE);
+        if (!saved && people.length === 0) {
+          // Only fallback to demo initial people if backend is completely offline AND localStorage is empty
+          setPeople(INITIAL_PEOPLE);
+        }
+      } finally {
+        isDataLoadedRef.current = true;
       }
     }
 
@@ -216,7 +230,15 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async function loadTeams() {
       try {
         const apiTeams = await api.getTeams(activeEventId);
-        if (apiTeams) setTeams(apiTeams);
+        if (Array.isArray(apiTeams)) {
+          setTeams(apiTeams);
+          try {
+            localStorage.setItem(`jusc_teams_event_${activeEventId}`, JSON.stringify(apiTeams));
+            if (activeEventId === 'event-1') {
+              localStorage.setItem(LOCAL_STORAGE_TEAMS, JSON.stringify(apiTeams));
+            }
+          } catch {}
+        }
       } catch (err) {
         console.warn('Backend offline, using localStorage for event teams.');
         try {
@@ -240,7 +262,7 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Persist teams for current event
   useEffect(() => {
-    if (currentEvent) {
+    if (currentEvent && isDataLoadedRef.current) {
       try {
         localStorage.setItem(`jusc_teams_event_${currentEvent.id}`, JSON.stringify(teams));
         if (currentEvent.id === 'event-1') {
@@ -261,13 +283,84 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [teamSearch, setTeamSearch] = useState('');
   const [teamStatusFilter, setTeamStatusFilter] = useState<TeamFilterStatus>('all');
 
+  // Persist people only after initial load is done
   useEffect(() => {
+    if (!isDataLoadedRef.current) return;
     try {
       localStorage.setItem(LOCAL_STORAGE_PEOPLE, JSON.stringify(people));
     } catch (e) {
       console.error('Failed to save people to localStorage', e);
     }
   }, [people]);
+
+  // Real-time cross-tab synchronization
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === LOCAL_STORAGE_PEOPLE) {
+        try {
+          const updated = e.newValue ? JSON.parse(e.newValue) : [];
+          setPeople(updated);
+        } catch {}
+      }
+      if (e.key && e.key.startsWith('jusc_teams')) {
+        try {
+          const updated = e.newValue ? JSON.parse(e.newValue) : [];
+          setTeams(updated);
+        } catch {}
+      }
+      if (e.key === LOCAL_STORAGE_EVENTS) {
+        try {
+          const updated = e.newValue ? JSON.parse(e.newValue) : [];
+          setEvents(updated);
+        } catch {}
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  // Re-sync with SQLite database whenever the tab/window is focused or becomes visible
+  useEffect(() => {
+    const handleSync = async () => {
+      try {
+        const [apiEvents, apiPeople] = await Promise.all([
+          api.getEvents(),
+          api.getPeople(),
+        ]);
+        if (Array.isArray(apiEvents) && apiEvents.length > 0) {
+          setEvents(apiEvents);
+        }
+        if (Array.isArray(apiPeople)) {
+          setPeople(apiPeople);
+          try {
+            localStorage.setItem(LOCAL_STORAGE_PEOPLE, JSON.stringify(apiPeople));
+          } catch {}
+        }
+        if (currentEvent) {
+          const apiTeams = await api.getTeams(currentEvent.id);
+          if (Array.isArray(apiTeams)) {
+            setTeams(apiTeams);
+          }
+        }
+      } catch {
+        // Quiet fallback
+      }
+    };
+
+    window.addEventListener('focus', handleSync);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleSync();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [currentEvent?.id]);
 
   const logout = () => {
     api.logout();
@@ -567,16 +660,27 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deletePerson = async (personId: string) => {
     if (window.confirm('Tem certeza que deseja remover esta pessoa do cadastro?')) {
-      setTeams(prev =>
-        prev.map(t => ({
-          ...t,
-          roles: t.roles.map(r => ({
-            ...r,
-            assignedPersonIds: r.assignedPersonIds.filter(id => id !== personId),
-          })),
-        }))
-      );
-      setPeople(prev => prev.filter(p => p.id !== personId));
+      const updatedTeams = teams.map(t => ({
+        ...t,
+        roles: t.roles.map(r => ({
+          ...r,
+          assignedPersonIds: r.assignedPersonIds.filter(id => id !== personId),
+        })),
+      }));
+      const updatedPeople = people.filter(p => p.id !== personId);
+
+      setTeams(updatedTeams);
+      setPeople(updatedPeople);
+
+      try {
+        localStorage.setItem(LOCAL_STORAGE_PEOPLE, JSON.stringify(updatedPeople));
+        if (currentEvent) {
+          localStorage.setItem(`jusc_teams_event_${currentEvent.id}`, JSON.stringify(updatedTeams));
+        }
+      } catch (e) {
+        console.error('Failed to update localStorage on delete', e);
+      }
+
       try {
         await api.deletePerson(personId);
       } catch (err) {
