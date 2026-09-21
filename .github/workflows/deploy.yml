@@ -1,0 +1,34 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Only run deploy if SSH_HOST secret is configured in the repository
+    if: ${{ vars.DEPLOY_ENABLED == 'true' || secrets.SSH_HOST != '' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy on VPS via SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER || 'root' }}
+        key: ${{ secrets.SSH_KEY }}
+        port: ${{ secrets.SSH_PORT || 22 }}
+        script: |
+          mkdir -p /opt/jusc-equipes
+          cd /opt/jusc-equipes
+          if [ -d .git ]; then
+            git pull
+          else
+            git clone ${{ github.server_url }}/${{ github.repository }}.git .
+          fi
+          chmod +x deploy.sh
+          ./deploy.sh
