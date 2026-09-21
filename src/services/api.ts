@@ -90,11 +90,12 @@ export const api = {
     description?: string,
     date?: string,
     location?: string,
-    cloneFromEventId?: string
+    cloneFromEventId?: string,
+    id?: string
   ): Promise<Event> {
     return request<Event>('/events', {
       method: 'POST',
-      body: JSON.stringify({ name, description, date, location, cloneFromEventId }),
+      body: JSON.stringify({ id, name, description, date, location, cloneFromEventId }),
     });
   },
 
@@ -117,10 +118,16 @@ export const api = {
     return request<Team[]>(`/teams${query}`);
   },
 
-  async createTeam(name: string, description: string, colorAccent = '#FFC700', eventId?: string): Promise<Team> {
+  async createTeam(
+    name: string, 
+    description: string, 
+    colorAccent = '#FFC700', 
+    eventId?: string,
+    id?: string
+  ): Promise<Team> {
     return request<Team>('/teams', {
       method: 'POST',
-      body: JSON.stringify({ name, description, colorAccent, eventId }),
+      body: JSON.stringify({ id, name, description, colorAccent, eventId }),
     });
   },
 
@@ -145,10 +152,16 @@ export const api = {
   },
 
   // Roles
-  async createRole(teamId: string, title: string, description: string, maxSpots?: number): Promise<any> {
+  async createRole(
+    teamId: string, 
+    title: string, 
+    description: string, 
+    maxSpots?: number,
+    id?: string
+  ): Promise<any> {
     return request<any>(`/teams/${teamId}/roles`, {
       method: 'POST',
-      body: JSON.stringify({ title, description, maxSpots }),
+      body: JSON.stringify({ id, title, description, maxSpots }),
     });
   },
 
@@ -177,10 +190,17 @@ export const api = {
     return request<Person[]>('/people');
   },
 
-  async createPerson(name: string, type: PersonType, priority: PriorityLevel, phone?: string, notes?: string): Promise<Person> {
+  async createPerson(
+    name: string, 
+    type: PersonType, 
+    priority: PriorityLevel, 
+    phone?: string, 
+    notes?: string,
+    id?: string
+  ): Promise<Person> {
     return request<Person>('/people', {
       method: 'POST',
-      body: JSON.stringify({ name, type, priority, phone, notes }),
+      body: JSON.stringify({ id, name, type, priority, phone, notes }),
     });
   },
 
@@ -220,6 +240,13 @@ export const api = {
   },
 
   // Backup & Reset
+  async restoreBackup(data: any): Promise<void> {
+    return request<void>('/backup/restore', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
   async resetToDefaults(): Promise<void> {
     return request<void>('/backup/reset', {
       method: 'POST',

@@ -113,12 +113,12 @@ app.get('/api/events', (req, res) => {
 });
 
 app.post('/api/events', authMiddleware, (req, res) => {
-  const { name, description, date, location, cloneFromEventId } = req.body;
+  const { id: reqId, name, description, date, location, cloneFromEventId } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'O nome do evento é obrigatório.' });
   }
 
-  const id = `event-${Date.now()}`;
+  const id = reqId || `event-${Date.now()}`;
   const now = new Date().toISOString();
 
   const createEventTx = db.transaction(() => {
@@ -282,13 +282,13 @@ app.get('/api/teams', (req, res) => {
 });
 
 app.post('/api/teams', authMiddleware, (req, res) => {
-  const { name, description, colorAccent, eventId } = req.body;
+  const { id: reqId, name, description, colorAccent, eventId } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'O nome da equipe é obrigatório.' });
   }
 
   const targetEventId = eventId || 'event-1';
-  const id = `t-${Date.now()}`;
+  const id = reqId || `t-${Date.now()}`;
   const maxOrder = (db.prepare('SELECT MAX(order_index) as max_order FROM teams WHERE event_id = ?').get(targetEventId) as any)?.max_order ?? -1;
   const orderIndex = maxOrder + 1;
 
@@ -337,10 +337,10 @@ app.post('/api/teams/reorder', authMiddleware, (req, res) => {
 // Roles
 app.post('/api/teams/:teamId/roles', authMiddleware, (req, res) => {
   const { teamId } = req.params;
-  const { title, description, maxSpots } = req.body;
+  const { id: reqId, title, description, maxSpots } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ error: 'O título da função é obrigatório.' });
 
-  const id = `r-${Date.now()}`;
+  const id = reqId || `r-${Date.now()}`;
   const maxOrder = (db.prepare('SELECT MAX(order_index) as max_order FROM roles WHERE team_id = ?').get(teamId) as any)?.max_order ?? -1;
 
   db.prepare(`
@@ -404,10 +404,10 @@ app.get('/api/people', (req, res) => {
 });
 
 app.post('/api/people', authMiddleware, (req, res) => {
-  const { name, type, priority, phone, notes } = req.body;
+  const { id: reqId, name, type, priority, phone, notes } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'O nome é obrigatório.' });
 
-  const id = `p-${Date.now()}`;
+  const id = reqId || `p-${Date.now()}`;
   const createdAt = new Date().toISOString();
 
   db.prepare(`
@@ -515,6 +515,77 @@ app.get('/api/backup', authMiddleware, (req, res) => {
     people,
     assignments,
   });
+});
+
+app.post('/api/backup/restore', authMiddleware, (req, res) => {
+  const { events, teams, roles, people, assignments } = req.body;
+
+  try {
+    const restoreTx = db.transaction(() => {
+      db.prepare('DELETE FROM role_assignments').run();
+      db.prepare('DELETE FROM roles').run();
+      db.prepare('DELETE FROM teams').run();
+      db.prepare('DELETE FROM people').run();
+      if (events && Array.isArray(events) && events.length > 0) {
+        db.prepare('DELETE FROM events').run();
+      }
+
+      if (events && Array.isArray(events)) {
+        const insertEvent = db.prepare(`
+          INSERT INTO events (id, name, description, date, location, status, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const e of events) {
+          insertEvent.run(e.id, e.name, e.description || '', e.date || '', e.location || '', e.status || 'active', e.createdAt || new Date().toISOString());
+        }
+      }
+
+      if (people && Array.isArray(people)) {
+        const insertPerson = db.prepare(`
+          INSERT INTO people (id, name, type, priority, phone, notes, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const p of people) {
+          insertPerson.run(p.id, p.name, p.type || 'Integrantes', p.priority ?? 0, p.phone || null, p.notes || null, p.createdAt || new Date().toISOString());
+        }
+      }
+
+      if (teams && Array.isArray(teams)) {
+        const insertTeam = db.prepare(`
+          INSERT INTO teams (id, event_id, name, description, color_accent, order_index, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        const insertRole = db.prepare(`
+          INSERT INTO roles (id, team_id, title, description, max_spots, order_index, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        const insertAssign = db.prepare(`
+          INSERT OR IGNORE INTO role_assignments (role_id, person_id, created_at)
+          VALUES (?, ?, ?)
+        `);
+
+        teams.forEach((t: any, tIdx: number) => {
+          insertTeam.run(t.id, t.eventId || 'event-1', t.name, t.description || '', t.colorAccent || '#FFC700', tIdx, new Date().toISOString());
+          if (t.roles && Array.isArray(t.roles)) {
+            t.roles.forEach((r: any, rIdx: number) => {
+              insertRole.run(r.id, t.id, r.title, r.description || '', r.maxSpots || null, rIdx, new Date().toISOString());
+              if (r.assignedPersonIds && Array.isArray(r.assignedPersonIds)) {
+                r.assignedPersonIds.forEach((pid: string) => {
+                  insertAssign.run(r.id, pid, new Date().toISOString());
+                });
+              }
+            });
+          }
+        });
+      }
+    });
+
+    restoreTx();
+    return res.json({ success: true, message: 'Dados restaurados com sucesso!' });
+  } catch (err: any) {
+    console.error('Failed to restore backup in DB:', err);
+    return res.status(500).json({ error: 'Falha ao restaurar banco de dados: ' + (err.message || err) });
+  }
 });
 
 app.post('/api/backup/reset', authMiddleware, (req, res) => {

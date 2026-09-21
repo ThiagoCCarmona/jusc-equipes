@@ -303,7 +303,7 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     try {
-      const apiEvt = await api.createEvent(name, description, date, location, cloneFromEventId);
+      const apiEvt = await api.createEvent(name, description, date, location, cloneFromEventId, tempId);
       if (apiEvt) {
         newEvt = apiEvt;
       }
@@ -386,7 +386,7 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTeams(prev => [newTeam, ...prev]);
 
     try {
-      await api.createTeam(name, description, colorAccent, targetEventId);
+      await api.createTeam(name, description, colorAccent, targetEventId, tempId);
     } catch (err) {
       console.warn('API createTeam sync error', err);
     }
@@ -455,7 +455,7 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     try {
-      await api.createRole(teamId, title, description, maxSpots);
+      await api.createRole(teamId, title, description, maxSpots, tempId);
     } catch (err) {
       console.warn('API createRole sync error', err);
     }
@@ -550,7 +550,7 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setPeople(prev => [newPerson, ...prev]);
 
     try {
-      await api.createPerson(name, type, priority, phone, notes);
+      await api.createPerson(name, type, priority, phone, notes, tempId);
     } catch (err) {
       console.warn('API createPerson sync error', err);
     }
@@ -749,6 +749,11 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (parsed.teams && Array.isArray(parsed.teams) && parsed.people && Array.isArray(parsed.people)) {
         setTeams(parsed.teams);
         setPeople(parsed.people);
+        if (parsed.events && Array.isArray(parsed.events)) {
+          setEvents(parsed.events);
+          if (parsed.events.length > 0) setCurrentEvent(parsed.events[0]);
+        }
+        api.restoreBackup(parsed).catch(err => console.warn('API restoreBackup sync error', err));
         alert('Backup importado com sucesso!');
         return true;
       } else {

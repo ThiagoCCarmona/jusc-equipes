@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Plus, 
   FileText, 
@@ -17,7 +17,8 @@ import {
   Calendar,
   Edit3,
   PlusCircle,
-  Trash2
+  Trash2,
+  Database
 } from 'lucide-react';
 import { useTeams } from '../context/TeamContext';
 import { TeamModal } from './TeamModal';
@@ -57,6 +58,23 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [eventToEdit, setEventToEdit] = useState<any>(null);
   const [isEventDropdownOpen, setIsEventDropdownOpen] = useState(false);
+
+  const eventDropdownRef = useRef<HTMLDivElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (eventDropdownRef.current && !eventDropdownRef.current.contains(event.target as Node)) {
+        setIsEventDropdownOpen(false);
+      }
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setIsExportMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Compute metrics
   const totalPeople = people.length;
@@ -110,65 +128,70 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   };
 
   return (
-    <header className="relative w-full border-b-2 border-gray-800 bg-[#0d0e16]/95 backdrop-blur-md sticky top-0 z-40 select-none">
+    <header className="relative w-full border-b border-gray-800 bg-[#0d0e16]/98 backdrop-blur-md sticky top-0 z-40 select-none shadow-xl">
       {/* Top ambient gold glow accent */}
       <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#FFC700] to-transparent" />
 
-      {/* Main Bar */}
-      <div className="max-w-[2100px] mx-auto px-4 sm:px-6 py-2.5">
-        <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
+      {/* Row 1: Brand, Event Selector & Main Action Buttons */}
+      <div className="max-w-[2100px] mx-auto px-3 sm:px-6 py-2.5">
+        <div className="flex items-center justify-between gap-2 sm:gap-4">
           
-          {/* Brand, Logo & Event Selector */}
-          <div className="flex items-center gap-2 sm:gap-3 w-full lg:w-auto justify-between lg:justify-start">
-            <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* Left: Brand + Event Selector */}
+          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+            {/* Logo & Title */}
+            <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
               <div className="relative group cursor-pointer" title="JUSC - Jovens Unidos Seguindo Cristo">
                 <img
                   src="/assets/logo-jusc.jpg"
                   alt="Logo JUSC"
-                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl object-cover border-2 border-[#FFC700] shadow-[0_0_15px_rgba(255,199,0,0.3)]"
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-cover border-2 border-[#FFC700] shadow-[0_0_15px_rgba(255,199,0,0.3)]"
                 />
               </div>
 
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-base sm:text-xl font-black tracking-tight text-white flex items-center gap-1 sm:gap-1.5">
+              <div className="hidden sm:block">
+                <div className="flex items-center gap-1.5">
+                  <h1 className="text-sm sm:text-base font-black tracking-tight text-white flex items-center gap-1">
                     <span className="text-[#FFC700]">JUSC</span>
-                    <span className="text-gray-400 font-bold text-xs sm:text-base">|</span>
-                    <span className="text-gray-100 font-extrabold text-xs sm:text-base">Equipes</span>
+                    <span className="text-gray-500 font-bold">|</span>
+                    <span className="text-gray-100 font-extrabold">Equipes</span>
                   </h1>
                 </div>
-                <p className="text-[10px] sm:text-[11px] text-gray-400 font-medium hidden sm:block">
+                <p className="text-[10px] text-gray-400 font-medium">
                   Jovens Unidos Seguindo Cristo
                 </p>
               </div>
             </div>
 
-            {/* Event Selector Dropdown */}
-            <div className="relative">
+            {/* Subtle Divider */}
+            <div className="hidden sm:block h-6 w-px bg-gray-800 shrink-0" />
+
+            {/* Event Selector Pill Dropdown */}
+            <div className="relative shrink-0" ref={eventDropdownRef}>
               <button
                 onClick={() => setIsEventDropdownOpen(!isEventDropdownOpen)}
-                className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#141624] hover:bg-[#1a1d2e] border border-[#FFC700]/50 hover:border-[#FFC700] text-left transition-all cursor-pointer shadow-sm group"
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#141624] hover:bg-[#1a1d2e] border border-[#FFC700]/50 hover:border-[#FFC700] text-left transition-all cursor-pointer shadow-sm group"
                 title="Clique para alternar ou gerenciar eventos"
               >
-                <div className="p-1.5 rounded-lg bg-[#FFC700]/15 text-[#FFC700] group-hover:scale-105 transition-transform">
+                <div className="p-1 rounded-lg bg-[#FFC700]/15 text-[#FFC700] group-hover:scale-105 transition-transform shrink-0">
                   <Calendar className="w-3.5 h-3.5" />
                 </div>
-                <div className="max-w-[110px] sm:max-w-[160px] xl:max-w-[200px] truncate">
-                  <div className="text-[9px] font-bold text-[#FFC700] uppercase tracking-wider">
+                <div className="max-w-[120px] sm:max-w-[170px] md:max-w-[210px] truncate">
+                  <div className="text-[8px] sm:text-[9px] font-bold text-[#FFC700] uppercase tracking-wider leading-none">
                     Evento Ativo
                   </div>
-                  <div className="text-xs sm:text-sm font-extrabold text-white truncate">
+                  <div className="text-xs sm:text-sm font-extrabold text-white truncate mt-0.5">
                     {currentEvent?.name || 'Selecione um evento'}
                   </div>
                 </div>
-                <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isEventDropdownOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform shrink-0 ${isEventDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
 
+              {/* Event Dropdown Menu */}
               {isEventDropdownOpen && (
                 <div className="absolute left-0 top-full mt-2 w-72 sm:w-80 bg-[#121420] border-2 border-[#FFC700]/50 rounded-2xl shadow-2xl p-2 z-50 animate-fade-in space-y-1">
                   <div className="px-3 py-1.5 flex items-center justify-between border-b border-gray-800">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                      Eventos ({events.length})
+                      Eventos Cadastrados ({events.length})
                     </span>
                     <button
                       onClick={() => {
@@ -264,81 +287,40 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                 </div>
               )}
             </div>
+          </div>
 
+          {/* Right: Actions */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {/* Mobile menu button for sidebar */}
             {onToggleSidebar && (
               <button
                 onClick={onToggleSidebar}
-                className="md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#151824] text-[#FFC700] border border-gray-700 hover:bg-gray-800 text-xs font-bold"
+                className="md:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#151824] text-[#FFC700] border border-gray-700 hover:bg-gray-800 text-xs font-bold shrink-0"
                 title="Abrir Banco de Pessoas"
               >
-                <Menu className="w-4 h-4" />
+                <Menu className="w-3.5 h-3.5" />
                 <span>Pessoas ({totalPeople})</span>
               </button>
             )}
-          </div>
 
-          {/* Quick Stats Badges: Includes VAGAS ABERTAS and VAGAS PREENCHIDAS */}
-          <div className="flex items-center gap-2 text-xs overflow-x-auto w-full lg:w-auto justify-start lg:justify-center py-1 scrollbar-none">
-            {/* Vagas Preenchidas */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#091812] border border-emerald-500/50 shrink-0">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span className="text-gray-300 font-medium">Preenchidas:</span>
-              <span className="font-extrabold text-emerald-400 text-sm">{filledSpots}</span>
-              {totalSpots > 0 && (
-                <span className="text-gray-400 text-[10px]">/ {totalSpots}</span>
-              )}
-            </div>
-
-            {/* Vagas Abertas Restantes */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#20180a] border border-[#FFC700]/50 shrink-0">
-              <AlertCircle className="w-4 h-4 text-[#FFC700]" />
-              <span className="text-gray-300 font-medium">Vagas Abertas:</span>
-              <span className="font-extrabold text-[#FFC700] text-sm">{openSpots}</span>
-            </div>
-
-            {/* Equipes */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#141624] border border-gray-800 shrink-0">
-              <Layers className="w-3.5 h-3.5 text-[#FFC700]" />
-              <span className="text-gray-400">Equipes:</span>
-              <span className="font-bold text-white">{teams.length}</span>
-            </div>
-
-            {/* Funções */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#141624] border border-gray-800 shrink-0">
-              <span className="w-2 h-2 rounded-full bg-[#FFC700]" />
-              <span className="text-gray-400">Funções:</span>
-              <span className="font-bold text-white">{totalRoles}</span>
-            </div>
-
-            {/* Pessoas */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#141624] border border-gray-800 shrink-0">
-              <Users className="w-3.5 h-3.5 text-blue-400" />
-              <span className="text-gray-400">Alocados:</span>
-              <span className="font-bold text-[#FFC700]">{allocatedCount}</span>
-              <span className="text-gray-500">/ {totalPeople}</span>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2 sm:gap-2.5 w-full lg:w-auto justify-end flex-wrap relative">
+            {/* Nova Equipe Button */}
             <button
               onClick={() => setIsTeamModalOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-black text-black bg-[#FFC700] hover:bg-[#FFE066] active:bg-[#E5B200] rounded-xl transition-all shadow-lg shadow-[#FFC700]/20 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-black text-black bg-[#FFC700] hover:bg-[#FFE066] active:bg-[#E5B200] rounded-xl transition-all shadow-lg shadow-[#FFC700]/20 cursor-pointer shrink-0"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span>Nova Equipe</span>
+              <span className="hidden xs:inline">Nova Equipe</span>
             </button>
 
             {/* Unified Export Menu Button */}
-            <div className="relative">
+            <div className="relative shrink-0" ref={exportMenuRef}>
               <button
                 onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
-                className="flex items-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-bold text-gray-100 bg-[#141624] hover:bg-[#1a1d2e] hover:text-[#FFC700] border border-gray-700 hover:border-[#FFC700]/60 rounded-xl transition-all cursor-pointer shadow-md"
+                className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-gray-100 bg-[#141624] hover:bg-[#1a1d2e] hover:text-[#FFC700] border border-gray-700 hover:border-[#FFC700]/60 rounded-xl transition-all cursor-pointer shadow-md shrink-0"
               >
                 <FileText className="w-4 h-4 text-[#FFC700]" />
-                <span>Exportar Relatórios</span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
+                <span className="hidden sm:inline">Exportar</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform shrink-0 ${isExportMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {/* Export Dropdown Menu */}
@@ -354,7 +336,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                     <FileText className="w-4 h-4 text-red-400 shrink-0" />
                     <div>
                       <div className="font-bold">Equipes em PDF</div>
-                      <div className="text-[10px] text-gray-400">Relatório com descrição e funções</div>
+                      <div className="text-[10px] text-gray-400">Relatório oficial com descrição e funções</div>
                     </div>
                   </button>
 
@@ -401,7 +383,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             {/* Backup & Settings */}
             <button
               onClick={() => setIsBackupModalOpen(true)}
-              className="p-2 text-gray-400 hover:text-white bg-[#141624] hover:bg-gray-800 border border-gray-700/80 rounded-xl transition-all cursor-pointer shadow-sm"
+              className="p-1.5 sm:p-2 text-gray-400 hover:text-white bg-[#141624] hover:bg-gray-800 border border-gray-700/80 rounded-xl transition-all cursor-pointer shadow-sm shrink-0"
               title="Backup, restauração e configurações"
             >
               <Settings2 className="w-4 h-4" />
@@ -409,17 +391,17 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
             {/* Auth status & logout / login */}
             {isAuthenticated ? (
-              <div className="flex items-center gap-2 pl-1 border-l border-gray-800">
+              <div className="flex items-center gap-1.5 sm:gap-2 pl-1 border-l border-gray-800 shrink-0">
                 <div 
                   className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#141624] border border-gray-800 text-xs text-gray-300"
                   title={`Conectado como ${currentUser?.name || currentUser?.email}`}
                 >
                   <ShieldCheck className="w-3.5 h-3.5 text-[#FFC700]" />
-                  <span className="font-semibold text-gray-200 max-w-[120px] truncate">{currentUser?.name || currentUser?.email?.split('@')[0]}</span>
+                  <span className="font-semibold text-gray-200 max-w-[110px] truncate">{currentUser?.name || currentUser?.email?.split('@')[0]}</span>
                 </div>
                 <button
                   onClick={logout}
-                  className="p-2 text-gray-400 hover:text-red-400 bg-[#141624] hover:bg-red-500/10 border border-gray-700/80 hover:border-red-500/30 rounded-xl transition-all cursor-pointer shadow-sm"
+                  className="p-1.5 sm:p-2 text-gray-400 hover:text-red-400 bg-[#141624] hover:bg-red-500/10 border border-gray-700/80 hover:border-red-500/30 rounded-xl transition-all cursor-pointer shadow-sm"
                   title="Sair (Logout)"
                 >
                   <LogOut className="w-4 h-4" />
@@ -428,13 +410,65 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             ) : (
               <button
                 onClick={openLoginModal}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-black bg-[#FFC700] hover:bg-[#FFD54F] rounded-xl transition-all cursor-pointer shadow-md shadow-[#FFC700]/20"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-black bg-[#FFC700] hover:bg-[#FFD54F] rounded-xl transition-all cursor-pointer shadow-md shadow-[#FFC700]/20 shrink-0"
                 title="Entrar com conta JUSC"
               >
-                <LogIn className="w-4 h-4" />
-                <span>Entrar</span>
+                <LogIn className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Entrar</span>
               </button>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2: Clean, dedicated stats strip */}
+      <div className="w-full bg-[#0a0b12]/95 border-t border-gray-800/80 py-1.5 px-3 sm:px-6">
+        <div className="max-w-[2100px] mx-auto flex items-center justify-between gap-3 overflow-x-auto scrollbar-none text-xs">
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+            {/* Vagas Preenchidas */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#091812] border border-emerald-500/40 shrink-0 text-xs">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-gray-300 font-medium">Preenchidas:</span>
+              <span className="font-extrabold text-emerald-400">{filledSpots}</span>
+              {totalSpots > 0 && (
+                <span className="text-gray-400 text-[10px]">/ {totalSpots}</span>
+              )}
+            </div>
+
+            {/* Vagas Abertas */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#20180a] border border-[#FFC700]/50 shrink-0 text-xs">
+              <AlertCircle className="w-3.5 h-3.5 text-[#FFC700]" />
+              <span className="text-gray-300 font-medium">Vagas Abertas:</span>
+              <span className="font-extrabold text-[#FFC700]">{openSpots}</span>
+            </div>
+
+            {/* Equipes */}
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#141624] border border-gray-800 shrink-0 text-xs">
+              <Layers className="w-3.5 h-3.5 text-[#FFC700]" />
+              <span className="text-gray-400">Equipes:</span>
+              <span className="font-bold text-white">{teams.length}</span>
+            </div>
+
+            {/* Funções */}
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#141624] border border-gray-800 shrink-0 text-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#FFC700]" />
+              <span className="text-gray-400">Funções:</span>
+              <span className="font-bold text-white">{totalRoles}</span>
+            </div>
+
+            {/* Pessoas */}
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#141624] border border-gray-800 shrink-0 text-xs">
+              <Users className="w-3.5 h-3.5 text-blue-400" />
+              <span className="text-gray-400">Alocados:</span>
+              <span className="font-bold text-[#FFC700]">{allocatedCount}</span>
+              <span className="text-gray-500">/ {totalPeople}</span>
+            </div>
+          </div>
+
+          <div className="hidden md:flex items-center gap-2 text-[11px] text-gray-400 shrink-0">
+            <Database className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-gray-300">Banco SQLite Conectado</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           </div>
         </div>
       </div>
