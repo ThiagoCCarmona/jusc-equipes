@@ -1,7 +1,7 @@
 # ==============================================================================
 # Stage 1: Build Frontend (Vite + React + TailwindCSS)
 # ==============================================================================
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -13,7 +13,7 @@ RUN npm run build
 # ==============================================================================
 # Stage 2: Build Backend Server (TypeScript + Express + SQLite)
 # ==============================================================================
-FROM node:20-bookworm-slim AS server-builder
+FROM node:22-bookworm-slim AS server-builder
 WORKDIR /app/server
 
 # Install build dependencies for native sqlite compilation
@@ -32,7 +32,7 @@ RUN npm run build
 # ==============================================================================
 # Stage 3: Production Runner
 # ==============================================================================
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -52,7 +52,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install only production dependencies
 COPY server/package.json server/package-lock.json ./
-RUN npm ci --only=production \
+RUN npm ci --omit=dev \
     && apt-get purge -y python3 make g++ \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*

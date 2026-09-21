@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 set -e
 
 # ==============================================================================
@@ -37,18 +37,9 @@ if [ ! -f .env ]; then
     echo "✅ .env criado com sucesso."
 fi
 
-# 3. Garantir que as pastas persistentes existam
-mkdir -p data certbot/conf/live/$DOMAIN certbot/www
+# 4. Garantir permissões das pastas de dados
+mkdir -p data
 chmod -R 755 data
-
-# 4. Se não houver certificado SSL ainda, gerar certificado temporário para o Nginx subir
-if [ ! -f "certbot/conf/live/$DOMAIN/fullchain.pem" ]; then
-    echo "🔒 Gerando certificado de inicialização temporário para o Nginx..."
-    openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-      -keyout "certbot/conf/live/$DOMAIN/privkey.pem" \
-      -out "certbot/conf/live/$DOMAIN/fullchain.pem" \
-      -subj "/CN=$DOMAIN" 2>/dev/null || true
-fi
 
 # 5. Atualizar código do repositório (caso esteja rodando dentro de um git clone)
 if [ -d .git ]; then
@@ -56,17 +47,9 @@ if [ -d .git ]; then
     git pull --ff-only 2>/dev/null || true
 fi
 
-# 6. Build e Inicialização dos Containers Docker
+# 6. Build e Inicialização dos Containers Docker via Traefik Proxy
 echo "🐳 Construindo e subindo containers Docker..."
 docker compose up -d --build
-
-# 7. Emitir certificado oficial Let's Encrypt se solicitado com --ssl=email
-if [ -n "$EMAIL" ]; then
-    echo "📜 Solicitando certificado SSL oficial Let's Encrypt para $DOMAIN..."
-    docker compose run --rm --entrypoint "certbot certonly --webroot -w /var/www/certbot --force-renewal --email $EMAIL -d $DOMAIN --agree-tos --no-eff-email" certbot
-    docker compose exec web nginx -s reload
-    echo "✅ Certificado SSL oficial Let's Encrypt instalado com sucesso!"
-fi
 
 # 8. Aguardar inicialização e verificar integridade
 echo "⏳ Aguardando serviços ficarem online..."

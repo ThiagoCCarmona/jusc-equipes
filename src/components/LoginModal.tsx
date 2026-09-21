@@ -9,8 +9,8 @@ interface LoginModalProps {
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => {
-  const [email, setEmail] = useState('admin@jusc.com.br');
-  const [password, setPassword] = useState('jusc2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -82,7 +82,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
               <input
                 type="email"
                 required
-                placeholder="admin@jusc.com.br"
+                placeholder="Digite seu e-mail"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 bg-[#0a0b10] border border-gray-700 focus:border-[#FFC700] focus:ring-2 focus:ring-[#FFC700]/30 rounded-xl text-white text-sm outline-none transition-all placeholder:text-gray-500 font-medium"
@@ -99,7 +99,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
-                placeholder="Sua senha"
+                placeholder="Digite sua senha"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 className="w-full pl-10 pr-10 py-3 bg-[#0a0b10] border border-gray-700 focus:border-[#FFC700] focus:ring-2 focus:ring-[#FFC700]/30 rounded-xl text-white text-sm outline-none transition-all placeholder:text-gray-500 font-medium"
@@ -112,10 +112,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-          </div>
-
-          <div className="p-2.5 rounded-xl bg-[#08090e] border border-gray-800 text-[11px] text-gray-400">
-            <span className="text-[#FFC700] font-bold">Credenciais padrão:</span> admin@jusc.com.br / jusc2026
           </div>
 
           <button
